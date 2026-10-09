@@ -503,7 +503,7 @@ fun CashflowBudgetScreen(
                 }
 
                 item {
-                    Spacer(modifier = Modifier.height(40.dp))
+                    Spacer(modifier = Modifier.height(96.dp))
                 }
             }
         }

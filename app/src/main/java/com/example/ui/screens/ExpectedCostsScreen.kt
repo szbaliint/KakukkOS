@@ -106,6 +106,7 @@ fun ExpectedCostsScreen(
     var itemToEdit by remember { mutableStateOf<ExpectedCostItem?>(null) }
     var itemToAllocate by remember { mutableStateOf<ExpectedCostItem?>(null) }
     var itemToDelete by remember { mutableStateOf<ExpectedCostItem?>(null) }
+    var isTipDismissed by remember { mutableStateOf(false) }
 
     var selectedCategoryFilter by remember { mutableStateOf("All") }
     var selectedStatusFilter by remember { mutableStateOf<ExpectedCostStatus?>(null) }
@@ -173,10 +174,13 @@ fun ExpectedCostsScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // 1. CLEAR DISTINCTION BANNER: Expected Costs vs. Wishlist
-                item {
-                    DistinctionBannerCard(
-                        onNavigateToWishes = onNavigateToWishes
-                    )
+                if (!isTipDismissed) {
+                    item {
+                        DistinctionBannerCard(
+                            onNavigateToWishes = onNavigateToWishes,
+                            onDismiss = { isTipDismissed = true }
+                        )
+                    }
                 }
 
                 // 2. EXECUTIVE OVERVIEW METRICS CARD
@@ -319,7 +323,7 @@ fun ExpectedCostsScreen(
                 }
 
                 item {
-                    Spacer(modifier = Modifier.height(72.dp))
+                    Spacer(modifier = Modifier.height(96.dp))
                 }
             }
         }
@@ -411,7 +415,8 @@ fun ExpectedCostsScreen(
  */
 @Composable
 private fun DistinctionBannerCard(
-    onNavigateToWishes: () -> Unit
+    onNavigateToWishes: () -> Unit,
+    onDismiss: () -> Unit = {}
 ) {
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -453,12 +458,27 @@ private fun DistinctionBannerCard(
                 Spacer(modifier = Modifier.width(12.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
                             text = "EXPECTED COSTS VS. WISHLIST",
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = 1.1.sp),
                             color = MakBlue
                         )
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.size(24.dp).testTag("dismiss_expected_costs_tip_btn")
+                        ) {
+                            Icon(
+                                Icons.Default.Clear,
+                                contentDescription = "Close Tip",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(4.dp))

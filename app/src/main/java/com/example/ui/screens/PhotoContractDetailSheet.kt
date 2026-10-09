@@ -78,7 +78,9 @@ import com.example.ui.viewmodel.FinanceViewModel
 fun PhotoContractDetailSheet(
     contract: PhotoContract,
     viewModel: FinanceViewModel,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onEditContract: (PhotoContract) -> Unit = {},
+    onDeleteContract: (PhotoContract) -> Unit = {}
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val tasks by viewModel.photoTasks.collectAsStateWithLifecycle()
@@ -91,6 +93,7 @@ fun PhotoContractDetailSheet(
     var isRecordPaymentDialogOpen by remember { mutableStateOf(false) }
     var isAddTaskDialogOpen by remember { mutableStateOf(false) }
     var isChangeStatusDialogOpen by remember { mutableStateOf(false) }
+    var isDeleteDialogOpen by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -105,29 +108,63 @@ fun PhotoContractDetailSheet(
                 .padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Header: Title & Close
+            // Header: Title, Edit, Delete & Close
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = contract.title,
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Client: ${contract.clientName}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = contract.title,
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Client: ${contract.clientName}",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.Default.Close, contentDescription = "Close")
+                        }
                     }
 
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close")
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Action buttons row: Edit Booking & Delete Booking
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Button(
+                            onClick = {
+                                onEditContract(contract)
+                                onDismiss()
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f).testTag("sheet_edit_booking_btn")
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Edit Booking Details", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                        }
+
+                        OutlinedButton(
+                            onClick = { isDeleteDialogOpen = true },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = ExpenseRed),
+                            border = BorderStroke(1.dp, ExpenseRed.copy(alpha = 0.5f)),
+                            modifier = Modifier.testTag("sheet_delete_booking_btn")
+                        ) {
+                            Text("Delete Booking", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = ExpenseRed)
+                        }
                     }
                 }
             }
@@ -633,6 +670,33 @@ fun PhotoContractDetailSheet(
             },
             dismissButton = {
                 TextButton(onClick = { isAddTaskDialogOpen = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (isDeleteDialogOpen) {
+        AlertDialog(
+            onDismissRequest = { isDeleteDialogOpen = false },
+            title = { Text("Delete Booking?") },
+            text = {
+                Text("Are you sure you want to permanently delete '${contract.title}' for client ${contract.clientName}? This will remove all associated shoot dates and revenue records.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteContract(contract)
+                        isDeleteDialogOpen = false
+                        onDismiss()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ExpenseRed)
+                ) {
+                    Text("Delete Booking")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { isDeleteDialogOpen = false }) {
                     Text("Cancel")
                 }
             }

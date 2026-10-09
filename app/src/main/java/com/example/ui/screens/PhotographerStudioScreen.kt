@@ -114,8 +114,11 @@ import com.example.ui.theme.Amber500
 import com.example.ui.theme.Emerald500
 import com.example.ui.theme.ExpenseRed
 import com.example.ui.theme.IncomeGreen
+import com.example.ui.theme.MakBlue
 import com.example.ui.util.CalendarEventData
 import com.example.ui.util.CalendarIntegrationHelper
+import com.example.ui.util.DueUrgency
+import com.example.ui.util.TaskDateFormatter
 import com.example.ui.viewmodel.FinanceViewModel
 
 enum class StudioTab(val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
@@ -153,6 +156,9 @@ fun PhotographerStudioScreen(
     var selectedIdeaForDetail by remember { mutableStateOf<PhotoIdeaItem?>(null) }
     var wishToPromote by remember { mutableStateOf<WishItem?>(null) }
     var gearToEdit by remember { mutableStateOf<PhotoGearItem?>(null) }
+    var contractToEdit by remember { mutableStateOf<PhotoContract?>(null) }
+    var contractToDelete by remember { mutableStateOf<PhotoContract?>(null) }
+    var taskToEdit by remember { mutableStateOf<PhotoTask?>(null) }
 
     val contracts by viewModel.contracts.collectAsStateWithLifecycle()
 
@@ -160,18 +166,11 @@ fun PhotographerStudioScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(
-                            text = "Photographer Studio",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "Gear, Wishes, Contracts, Ideas & Shoots",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(
+                        text = "Photographer Studio",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack, modifier = Modifier.testTag("studio_back_btn")) {
@@ -307,6 +306,8 @@ fun PhotographerStudioScreen(
                     2 -> StudioContractsTabContent(
                         viewModel = viewModel,
                         onContractClick = { selectedContractForDetails = it },
+                        onEditContract = { contractToEdit = it },
+                        onDeleteContract = { contractToDelete = it },
                         onAddContractClick = { isAddContractDialogOpen = true }
                     )
                     3 -> StudioIdeasTabContent(
@@ -316,7 +317,8 @@ fun PhotographerStudioScreen(
                     )
                     4 -> StudioTasksTabContent(
                         viewModel = viewModel,
-                        onAddTaskClick = { isAddTaskDialogOpen = true }
+                        onAddTaskClick = { isAddTaskDialogOpen = true },
+                        onEditTask = { taskToEdit = it }
                     )
                 }
             }
@@ -335,7 +337,70 @@ fun PhotographerStudioScreen(
         PhotoContractDetailSheet(
             contract = contract,
             viewModel = viewModel,
-            onDismiss = { selectedContractForDetails = null }
+            onDismiss = { selectedContractForDetails = null },
+            onEditContract = { contractToEdit = it },
+            onDeleteContract = { contractToDelete = it }
+        )
+    }
+
+    // Dialog: Edit Booking
+    contractToEdit?.let { contract ->
+        EditContractDialog(
+            contract = contract,
+            onDismiss = { contractToEdit = null },
+            onConfirm = { updated ->
+                viewModel.updateContract(updated)
+                contractToEdit = null
+            }
+        )
+    }
+
+    // Dialog: Delete Booking Confirmation
+    contractToDelete?.let { contract ->
+        AlertDialog(
+            onDismissRequest = { contractToDelete = null },
+            title = { Text("Delete Booking?") },
+            text = { Text("Are you sure you want to permanently delete '${contract.title}' for client ${contract.clientName}?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteContract(contract)
+                        contractToDelete = null
+                        if (selectedContractForDetails?.id == contract.id) selectedContractForDetails = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ExpenseRed)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { contractToDelete = null }) { Text("Cancel") }
+            }
+        )
+    }
+
+    // Dialog: Edit Photo Gear
+    gearToEdit?.let { gear ->
+        EditPhotoGearDialog(
+            gear = gear,
+            onDismiss = { gearToEdit = null },
+            onConfirm = { updated ->
+                viewModel.updatePhotoGear(updated)
+                gearToEdit = null
+            }
+        )
+    }
+
+    // Dialog: Edit Studio Task
+    taskToEdit?.let { task ->
+        EditStudioTaskDialog(
+            task = task,
+            viewModel = viewModel,
+            onDismiss = { taskToEdit = null },
+            onConfirm = { updated ->
+                viewModel.updateTask(updated)
+                taskToEdit = null
+            }
         )
     }
 
@@ -378,9 +443,9 @@ fun PhotographerStudioScreen(
         )
     }
 
-    // Dialog: Add Photo Gear
+    // Dialog: Add Photo Gear (With Full Canon Database & Custom Price Override)
     if (isAddGearDialogOpen) {
-        AddPhotoGearDialog(
+        AddPhotoGearWithCanonDialog(
             onDismiss = { isAddGearDialogOpen = false },
             onConfirm = { name, brand, model, cat, sn, date, price, cond, loc, insured, notes ->
                 viewModel.addPhotoGear(name, brand, model, cat, sn, date, price, cond, loc, insured, notes)
@@ -553,6 +618,7 @@ fun StudioGearTabContent(
             items(filteredGear) { gear ->
                 PhotoGearCard(
                     gear = gear,
+                    onEdit = { onEditGear(gear) },
                     onDelete = { viewModel.deletePhotoGear(gear) }
                 )
             }
@@ -567,13 +633,17 @@ fun StudioGearTabContent(
 @Composable
 fun PhotoGearCard(
     gear: PhotoGearItem,
+    onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
-        modifier = Modifier.fillMaxWidth().testTag("gear_item_${gear.id}")
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onEdit() }
+            .testTag("gear_item_${gear.id}")
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(
@@ -684,7 +754,13 @@ fun PhotoGearCard(
 
                     Spacer(modifier = Modifier.width(6.dp))
 
-                    IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
+                    IconButton(onClick = onEdit, modifier = Modifier.size(28.dp).testTag("edit_gear_btn_${gear.id}")) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit Gear", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                    }
+
+                    Spacer(modifier = Modifier.width(2.dp))
+
+                    IconButton(onClick = onDelete, modifier = Modifier.size(28.dp).testTag("delete_gear_btn_${gear.id}")) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
                     }
                 }
@@ -957,6 +1033,8 @@ fun GearWishCard(
 fun StudioContractsTabContent(
     viewModel: FinanceViewModel,
     onContractClick: (PhotoContract) -> Unit,
+    onEditContract: (PhotoContract) -> Unit,
+    onDeleteContract: (PhotoContract) -> Unit,
     onAddContractClick: () -> Unit
 ) {
     val contracts by viewModel.contracts.collectAsStateWithLifecycle()
@@ -1061,7 +1139,9 @@ fun StudioContractsTabContent(
             items(filteredContracts) { contract ->
                 ContractCard(
                     contract = contract,
-                    onClick = { onContractClick(contract) }
+                    onClick = { onContractClick(contract) },
+                    onEdit = { onEditContract(contract) },
+                    onDelete = { onDeleteContract(contract) }
                 )
             }
         }
@@ -1075,7 +1155,9 @@ fun StudioContractsTabContent(
 @Composable
 fun ContractCard(
     contract: PhotoContract,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
 ) {
     val progressRatio = if (contract.totalAmount > 0) (contract.depositPaid / contract.totalAmount).toFloat().coerceIn(0f, 1f) else 1f
 
@@ -1178,13 +1260,35 @@ fun ContractCard(
                 trackColor = MaterialTheme.colorScheme.surfaceVariant
             )
 
-            if (contract.shootDate.isNotBlank()) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Action Buttons: Edit, Delete, Calendar sync
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(
+                        onClick = onEdit,
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.testTag("card_edit_contract_${contract.id}")
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Edit", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                    }
+
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(32.dp).testTag("card_delete_contract_${contract.id}")
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete Booking", tint = ExpenseRed, modifier = Modifier.size(16.dp))
+                    }
+                }
+
+                if (contract.shootDate.isNotBlank()) {
                     QuickGoogleCalendarButton(
                         event = CalendarEventData(
                             title = contract.title,
@@ -1193,19 +1297,7 @@ fun ContractCard(
                             dateStr = contract.shootDate,
                             startTimeStr = contract.shootStartTime,
                             endTimeStr = contract.shootEndTime
-                        ),
-                        modifier = Modifier.weight(1f)
-                    )
-                    FacebookAddToCalendarButton(
-                        event = CalendarEventData(
-                            title = contract.title,
-                            description = "Client: ${contract.clientName}\nDeliverables: ${contract.deliverables}\n${contract.notes}",
-                            location = contract.shootLocation,
-                            dateStr = contract.shootDate,
-                            startTimeStr = contract.shootStartTime,
-                            endTimeStr = contract.shootEndTime
-                        ),
-                        isPrimary = false
+                        )
                     )
                 }
             }
@@ -1214,62 +1306,145 @@ fun ContractCard(
 }
 
 // =========================================================================
-// TAB 4: TASKS & SHOOTS
+// TAB 4: TASKS & SHOOTS (REBUILT WITH REDESIGNED EXECUTIVE LAYOUT)
 // =========================================================================
 @Composable
 fun StudioTasksTabContent(
     viewModel: FinanceViewModel,
-    onAddTaskClick: () -> Unit
+    onAddTaskClick: () -> Unit,
+    onEditTask: (PhotoTask) -> Unit
 ) {
     val tasks by viewModel.photoTasks.collectAsStateWithLifecycle()
     val pendingCount by viewModel.pendingTasksCount.collectAsStateWithLifecycle()
 
     var filterCategory by remember { mutableStateOf("All") }
 
+    val completedCount = remember(tasks) { tasks.count { it.isCompleted } }
+    val totalCount = tasks.size
+    val prepCount = remember(tasks) { tasks.count { it.category.contains("Prep", ignoreCase = true) && !it.isCompleted } }
+    val editingCount = remember(tasks) { tasks.count { it.category.contains("Edit", ignoreCase = true) && !it.isCompleted } }
+    val completionRatio = if (totalCount > 0) completedCount.toFloat() / totalCount else 0f
+
     val filteredTasks = remember(tasks, filterCategory) {
         when (filterCategory) {
             "All" -> tasks
             "Pending" -> tasks.filter { !it.isCompleted }
             "Completed" -> tasks.filter { it.isCompleted }
-            else -> tasks.filter { it.category == filterCategory }
+            else -> tasks.filter { it.category.equals(filterCategory, ignoreCase = true) }
         }
     }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Summary
+        // Redesigned Executive Checklist Banner
         item {
             Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Column {
-                        Text("STUDIO & SHOOT TASKS", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text("$pendingCount Pending To-Dos", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold), color = MaterialTheme.colorScheme.onSurface)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "STUDIO SHOOT CHECKLIST",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "$completedCount of $totalCount Tasks Done (${(completionRatio * 100).toInt()}%)",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        Button(
+                            onClick = onAddTaskClick,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.testTag("studio_new_task_btn")
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("New Task")
+                        }
                     }
 
-                    OutlinedButton(onClick = onAddTaskClick) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Add Task")
+                    LinearProgressIndicator(
+                        progress = { completionRatio },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(4.dp)),
+                        color = IncomeGreen,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+
+                    // 4 Stat Capsules
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("$pendingCount", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                                Text("Pending", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = IncomeGreen.copy(alpha = 0.12f),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("$completedCount", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = IncomeGreen)
+                                Text("Completed", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Amber500.copy(alpha = 0.12f),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("$prepCount", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = Amber500)
+                                Text("Shoot Prep", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MakBlue.copy(alpha = 0.12f),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("$editingCount", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = MakBlue)
+                                Text("Editing", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
                     }
                 }
             }
         }
 
-        // Filter chips
+        // Filter chips strip
         item {
             Row(
                 modifier = Modifier
@@ -1277,11 +1452,16 @@ fun StudioTasksTabContent(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                listOf("All", "Pending", "Shoot Prep", "Editing", "Gear Maintenance", "Completed").forEach { cat ->
+                listOf("All", "Pending", "Shoot Prep", "Editing", "Client Review", "Gear Maintenance", "Completed").forEach { cat ->
+                    val isSel = filterCategory == cat
                     FilterChip(
-                        selected = filterCategory == cat,
+                        selected = isSel,
                         onClick = { filterCategory = cat },
-                        label = { Text(cat) }
+                        label = { Text(cat) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                            selectedLabelColor = MaterialTheme.colorScheme.primary
+                        )
                     )
                 }
             }
@@ -1289,87 +1469,206 @@ fun StudioTasksTabContent(
 
         if (filteredTasks.isEmpty()) {
             item {
-                Text(
-                    text = "No tasks under this filter.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 16.dp)
-                )
-            }
-        } else {
-            items(filteredTasks) { task ->
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
-                    modifier = Modifier.fillMaxWidth().testTag("task_item_${task.id}")
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp)
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Checkbox(
-                            checked = task.isCompleted,
-                            onCheckedChange = { viewModel.toggleTaskCompleted(task) },
-                            colors = CheckboxDefaults.colors(checkedColor = IncomeGreen)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = task.title,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = if (task.isCompleted) FontWeight.Normal else FontWeight.SemiBold
-                                ),
-                                color = if (task.isCompleted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+                        Icon(Icons.Outlined.TaskAlt, contentDescription = null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("No tasks found under '$filterCategory'", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedButton(onClick = onAddTaskClick) {
+                            Text("Create a Task")
+                        }
+                    }
+                }
+            }
+        } else {
+            items(filteredTasks, key = { it.id }) { task ->
+                val dueInfo = remember(task.dueDate) { TaskDateFormatter.parseAndFormat(task.dueDate) }
+                val priorityColor = when (task.priority) {
+                    TaskPriority.URGENT -> ExpenseRed
+                    TaskPriority.HIGH -> Amber500
+                    TaskPriority.MEDIUM -> MaterialTheme.colorScheme.primary
+                    TaskPriority.LOW -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(
+                        1.dp,
+                        if (task.isCompleted) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                        else priorityColor.copy(alpha = 0.35f)
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onEditTask(task) }
+                        .testTag("task_item_${task.id}")
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Checkbox(
+                                checked = task.isCompleted,
+                                onCheckedChange = { viewModel.toggleTaskCompleted(task) },
+                                colors = CheckboxDefaults.colors(checkedColor = IncomeGreen),
+                                modifier = Modifier.size(24.dp).testTag("task_check_${task.id}")
                             )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+
+                            Spacer(modifier = Modifier.width(10.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = task.title,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = if (task.isCompleted) FontWeight.Normal else FontWeight.Bold
+                                    ),
+                                    color = if (task.isCompleted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+                                )
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    // Urgency Badge
+                                    if (task.dueDate.isNotBlank() && !task.isCompleted) {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = when (dueInfo.urgency) {
+                                                DueUrgency.OVERDUE -> ExpenseRed.copy(alpha = 0.15f)
+                                                DueUrgency.TODAY -> Amber500.copy(alpha = 0.15f)
+                                                DueUrgency.TOMORROW -> MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                                DueUrgency.THIS_WEEK -> MakBlue.copy(alpha = 0.12f)
+                                                DueUrgency.UPCOMING, DueUrgency.NO_DATE -> MaterialTheme.colorScheme.surfaceVariant
+                                            }
+                                        ) {
+                                            Text(
+                                                text = dueInfo.relativeLabel,
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
+                                                color = when (dueInfo.urgency) {
+                                                    DueUrgency.OVERDUE -> ExpenseRed
+                                                    DueUrgency.TODAY -> Amber500
+                                                    DueUrgency.TOMORROW -> MaterialTheme.colorScheme.primary
+                                                    DueUrgency.THIS_WEEK -> MakBlue
+                                                    DueUrgency.UPCOMING, DueUrgency.NO_DATE -> MaterialTheme.colorScheme.onSurfaceVariant
+                                                },
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+
+                                    // Category Pill
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant
+                                    ) {
+                                        Text(
+                                            text = task.category,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+
+                                    // Priority Pill
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = priorityColor.copy(alpha = 0.12f)
+                                    ) {
+                                        Text(
+                                            text = task.priority.name,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                            color = priorityColor,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                }
+
                                 if (task.contractTitle != null) {
+                                    Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = task.contractTitle,
-                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        text = "Shoot: ${task.contractTitle}",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                                         color = MaterialTheme.colorScheme.primary
                                     )
-                                    Text(" • ", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                                Text(
-                                    text = "${task.category} • Due: ${task.dueDate.ifBlank { "Anytime" }}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
                             }
                         }
 
-                        if (task.dueDate.isNotBlank()) {
-                            val context = LocalContext.current
-                            IconButton(
-                                onClick = {
-                                    CalendarIntegrationHelper.addToGoogleCalendar(
-                                        context,
-                                        CalendarEventData(
-                                            title = task.title,
-                                            description = "Category: ${task.category}\nContract: ${task.contractTitle ?: "None"}\n${task.notes}",
-                                            location = "",
-                                            dateStr = task.dueDate,
-                                            startTimeStr = "09:00",
-                                            endTimeStr = "10:00"
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Action Bar: Edit, Delete, Google Calendar
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (task.dueDate.isNotBlank()) {
+                                val context = LocalContext.current
+                                IconButton(
+                                    onClick = {
+                                        CalendarIntegrationHelper.addToGoogleCalendar(
+                                            context,
+                                            CalendarEventData(
+                                                title = task.title,
+                                                description = "Category: ${task.category}\nContract: ${task.contractTitle ?: "None"}\n${task.notes}",
+                                                location = "",
+                                                dateStr = task.dueDate,
+                                                startTimeStr = "09:00",
+                                                endTimeStr = "10:00"
+                                            )
                                         )
+                                    },
+                                    modifier = Modifier.size(28.dp).testTag("task_cal_${task.id}")
+                                ) {
+                                    Icon(
+                                        Icons.Default.CalendarMonth,
+                                        contentDescription = "Sync to Google Calendar",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
                                     )
-                                },
-                                modifier = Modifier.size(28.dp).testTag("task_cal_${task.id}")
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.width(4.dp))
+
+                            IconButton(
+                                onClick = { onEditTask(task) },
+                                modifier = Modifier.size(28.dp).testTag("task_edit_${task.id}")
                             ) {
                                 Icon(
-                                    Icons.Default.CalendarMonth,
-                                    contentDescription = "Add to Google Calendar",
-                                    tint = MaterialTheme.colorScheme.primary,
+                                    Icons.Default.Edit,
+                                    contentDescription = "Edit Task",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
-                        }
 
-                        IconButton(onClick = { viewModel.deleteTask(task) }, modifier = Modifier.size(28.dp)) {
-                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(2.dp))
+
+                            IconButton(
+                                onClick = { viewModel.deleteTask(task) },
+                                modifier = Modifier.size(28.dp).testTag("task_del_${task.id}")
+                            ) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Delete Task",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -1377,7 +1676,7 @@ fun StudioTasksTabContent(
         }
 
         item {
-            Spacer(modifier = Modifier.height(60.dp))
+            Spacer(modifier = Modifier.height(80.dp))
         }
     }
 }

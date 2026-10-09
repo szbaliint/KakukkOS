@@ -778,19 +778,23 @@ fun WeeklyCostsTrackerView(
 
                             IconButton(
                                 onClick = { viewModel.deleteWeeklyCost(cost) },
-                                modifier = Modifier.size(28.dp).testTag("delete_cost_${cost.id}")
+                                modifier = Modifier.size(32.dp).testTag("delete_cost_${cost.id}")
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Delete,
                                     contentDescription = "Delete Cost",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                    modifier = Modifier.size(16.dp)
+                                    tint = ExpenseRed.copy(alpha = 0.85f),
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
                     }
                 }
             }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(96.dp))
         }
     }
 }
