@@ -1,0 +1,6 @@
+{
+  "name": "KakukkOS",
+  "description": "Personal LifeOS hub: Photographer Studio (gear inventory, wishlist, client contracts & shoots), WealthFlow finance hub, expected costs planning, and expandable modular workspaces.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
